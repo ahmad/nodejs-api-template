@@ -1,4 +1,5 @@
-A simple NodeJS API starting point.
+# A simple NodeJS API starting point. #
+Designed to help speedup the process of developing an API service using Node.JS.
 
 - MongoDB as Database
 - Mongoose as Schema

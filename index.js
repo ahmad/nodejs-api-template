@@ -3,13 +3,21 @@ const dotenv  	= require("dotenv").config();
 const mongoose 	= require("mongoose");
 
 const app 		= express();
+
+
+// body-parser - allows us to read $req.body
 app.use(express.json());
 
 
 
-mongoose.connect(process.env.DB_CONNECT, { useUnifiedTopology: true, useNewUrlParser: true }, () => {
-	console.log("Connected to DB");
-});
+mongoose
+	.connect(process.env.DB_CONNECT, { 
+		useNewUrlParser: true, 
+		useUnifiedTopology: true,
+		useCreateIndex: true
+	})
+	.then(() => console.log("DB Connected"))
+	.catch(err => console.log(`DB Connection Error: ${err.message}`));
 
 
 

@@ -8,7 +8,7 @@ Designed to help speedup the process of developing an API service using Node.JS.
 
 
 ## Setup ##
-Create a file name *.env* and add these config optiosn to it
+Create a file name *.env* and add these config options to it
 ```
 APP_PORT   = 3000
 DB_CONNECT = mongodb+srv://XXXX

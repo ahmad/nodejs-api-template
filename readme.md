@@ -12,4 +12,5 @@ Create a file name *.env* and add these config options to it
 ```
 APP_PORT   = 3000
 DB_CONNECT = mongodb+srv://XXXX
+APP_SECRET = A_RANDOM_SECRET_STRING_FOR_JWT
 ```

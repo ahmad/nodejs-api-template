@@ -8,6 +8,7 @@ export const TokenSchema = new mongoose.Schema({
 		lastName: { type: String },
 		email: { type: String }
 	},
+	disabled: { type: Boolean, required: true, default: false },
 	token: { type: String, required: true, unique: true, index: true},
 	createAt: { type: Date, default: Date.now },
 	updateAt: { type: Date, default: Date.now }

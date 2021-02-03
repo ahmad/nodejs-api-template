@@ -1,13 +1,10 @@
+import crypto from "crypto"
 
-
-export class AppError extends Error {
-	message: string  	= ""
-	stack: any 			= null
-
-	constructor(message: string, stack: any){
-		super();
-
-		this.message = message;
-		this.stack 	 = stack;
-	}
-} 
+export const generateRandomToken = async (size: number = 20) => {
+	return new Promise((resolve: any, rejects: any) => {
+		crypto.randomBytes(size, (err: any, buffer: Buffer) => {
+			if (err) return rejects("Unable to random token");
+			return resolve(buffer.toString("hex"));
+		});
+	})
+}

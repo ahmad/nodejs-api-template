@@ -1,18 +1,16 @@
 import express from "express";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
-import crypto from "crypto"
 
 import { User } from "../models/userModel";
 import { Token } from "../models/tokenModel";
 import { ValidateToken } from "../middleware/tokenValidator"
-import { ChangeEmailForm, ChangePasswordForm, ForgotPassword, LoginForm, RegisterForm, ResetPassword, UpdateProfileForm } from "../forms/user";
 import { PasswordReset } from "../models/passwordResetModel";
-import { Err } from "joi";
+import { ChangeEmailForm, ChangePasswordForm, ForgotPassword, LoginForm, RegisterForm, ResetPassword, UpdateProfileForm } from "../forms/user";
+import { generateRandomToken } from "../utils/helpers";
 
-const router 		= express.Router();
 
-const { APP_SECRET } = process.env;
+const router 			= express.Router();
+const { APP_SECRET } 	= process.env;
 
 if (!APP_SECRET){
 	throw new Error("Please ensure that APP_SECRENT is defined in your .env file");
@@ -28,7 +26,6 @@ const UserRoutes 	= {
 			message: error.details[0].message
 		});
 	
-	
 		// Hashing password
 		bcrypt.hash(userInfo.password, 10, (err: any, hash: any) => {
 			if (err) return res.status(400).json({
@@ -41,19 +38,18 @@ const UserRoutes 	= {
 			user.save((err: any, doc: any) => {
 				if (err) return res.status(400).json({
 					error: true,
-					error_code: err.code,
 					message: (err.code == 11000) ? "An account with that email address already exist." : "Unable to create account!" 
 				});
 
 				return res.json({
-						_id: doc._id,
-						firstName: doc.firstName,
-						lastName: doc.lastName,
-						email: doc.email,
-						title: doc.title,
-						company: doc.company,
-						createdAt: doc.createdAt,
-						updatedAt: doc.updatedAt
+					_id: doc._id,
+					firstName: doc.firstName,
+					lastName: doc.lastName,
+					email: doc.email,
+					title: doc.title,
+					company: doc.company,
+					createdAt: doc.createdAt,
+					updatedAt: doc.updatedAt
 				});
 			});
 		});
@@ -76,16 +72,13 @@ const UserRoutes 	= {
 				message: "No account was found matching the provided information."
 			});
 
-			bcrypt.compare(loginInfo.password, user.password, (err: any, matched: any) => {
+			bcrypt.compare(loginInfo.password, user.password, async (err: any, matched: any) => {
 				if (err) return res.status(500).json({
 					message: 'Unable to verify password.'
 				});
 
-				jwt.sign({ id: user._id, r:  Math.floor(Math.random() * 10000000) }, APP_SECRET, (err: any, token: any) => {
-					if (err) return res.status(500).json({
-						message: "Unable to generate auth token."
-					});
-
+				try {
+					const token = await generateRandomToken(25);
 					new Token({
 						token: token,
 						user: {
@@ -100,7 +93,6 @@ const UserRoutes 	= {
 						})
 						
 						return res.json({
-							error: false,
 							token: token,
 							account: {
 								_id: user._id,
@@ -109,9 +101,13 @@ const UserRoutes 	= {
 								email: user.email,
 								createdAt: user.createdAt
 							}
-						});
+						})
 					})
-				})
+				} catch (e) {
+					return res.status(500).json({
+						message: "Unable to generate auth token."
+					})
+				}
 			})
 		})
 	},
@@ -123,7 +119,7 @@ const UserRoutes 	= {
 		})
 
 		const { email } = value;
-		User.findOne({ "email": email }, (err: any, user: any) => {
+		User.findOne({ "email": email }, async (err: any, user: any) => {
 			if (err) return res.status(500).json({
 				message: "Unable to fetch user record."
 			})
@@ -132,14 +128,11 @@ const UserRoutes 	= {
 				message: "There are no record in our system matching that email address."
 			})
 
-			crypto.randomBytes(16, (err: any, buffer: any)=> {
-				if (err) return res.status(500).json({
-					message: "Unable to generate password reset token."
-				})
-
+			try {
+				const token = await generateRandomToken(16);
 				new PasswordReset({
 					user: user,
-					token: buffer.toString("hex")
+					token: token
 				}).save((err: any, record: any) => {
 					if (err) return res.status(500).json({
 						message: "Unable to create token record."
@@ -152,7 +145,11 @@ const UserRoutes 	= {
 						createdAt: record.createdAt
 					})
 				})
-			})
+			} catch (e) {
+				return res.status(500).json({
+					message: "Unable to generate password reset token."
+				})
+			}
 		}).select("_id firstName lastName email");
 	},
 
@@ -160,7 +157,7 @@ const UserRoutes 	= {
 		const { error, value } = ResetPassword.validate(req.body);
 		if (error) return res.status(400).json({
 			message: error.details[0].message
-		});
+		})
 
 		PasswordReset.findOneAndUpdate({
 			token: value.token,
@@ -188,12 +185,11 @@ const UserRoutes 	= {
 				}, { useFindAndModify: false, new: true }, (err: any, user: any) => {
 					if (err) return res.status(500).json({
 						message: "Unable to update password."
-					});
+					})
 
 					if (!user) return res.status(404).json({
 						message: "User not found."
 					})
-
 					
 					return res.json({
 						message : "Password successfully updated."
@@ -255,7 +251,7 @@ const UserRoutes 	= {
 		}, (err: any, account: any) => {
 			if (err) return res.status(500).json({
 				message: "Unable to communicate with database."
-			});
+			})
 
 			if (!account){
 				// Update user profile with this new email.
@@ -265,11 +261,11 @@ const UserRoutes 	= {
 				}, { useFindAndModify: false, new: true }, (err: any, updatedAccount: any) => {
 					if (err) return res.status(500).json({
 						message: "Unable to find and update user email."
-					});
+					})
 
 					if (!updatedAccount) return res.status(410).json({
 						message: "Unable to find user account."
-					});
+					})
 
 					return res.json(updatedAccount);
 				}).select("_id firstName lastName email phone title company createdAt updatedAt")
@@ -277,15 +273,14 @@ const UserRoutes 	= {
 
 			} else {
 				if (account._id.equals(req.user._id) === true){
-
 					return res.status(400).json({
 						message: `Your account email address is already set to '${value.email}'`
-					});
+					})
 
 				} else {
 					return res.status(409).json({
 						message: "The provided email address is already being used by another account."
-					});
+					})
 				}
 			}
 		})

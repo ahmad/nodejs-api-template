@@ -43,3 +43,7 @@ dbConnect().then((e) => {
 
 // App Routes
 app.use("/", require("./app/routes/auth"));
+
+process.on('uncaughtException', function(err) {
+	console.log("App crashed: ", err.message);
+});

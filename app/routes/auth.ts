@@ -1,11 +1,14 @@
 import express from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import crypto from "crypto"
 
 import { User } from "../models/userModel";
 import { Token } from "../models/tokenModel";
 import { ValidateToken } from "../middleware/tokenValidator"
-import { LoginForm, RegisterForm } from "../forms/user";
+import { ChangeEmailForm, ChangePasswordForm, ForgotPassword, LoginForm, RegisterForm, ResetPassword, UpdateProfileForm } from "../forms/user";
+import { PasswordReset } from "../models/passwordResetModel";
+import { Err } from "joi";
 
 const router 		= express.Router();
 
@@ -43,15 +46,14 @@ const UserRoutes 	= {
 				});
 
 				return res.json({
-					error: false,
-					account: {
 						_id: doc._id,
 						firstName: doc.firstName,
 						lastName: doc.lastName,
 						email: doc.email,
 						title: doc.title,
-						createdAt: doc.createdAt
-					}
+						company: doc.company,
+						createdAt: doc.createdAt,
+						updatedAt: doc.updatedAt
 				});
 			});
 		});
@@ -66,21 +68,25 @@ const UserRoutes 	= {
 		});
 
 		User.findOne({ email: loginInfo.email }, (err: any, user: any) => {
-			if (err || !user) return res.status(400).json({
-				error: true,
-				message: 'Unable to authenticate user!'
+			if (err) return res.status(500).json({
+				message: 'Unable to communicated with database.'
+			});
+
+			if (!user) return res.status(404).json({
+				message: "No account was found matching the provided information."
 			});
 
 			bcrypt.compare(loginInfo.password, user.password, (err: any, matched: any) => {
-				if (err) return res.status(400).json({
-					error: true,
-					message: 'Unable to authenticate user!'
+				if (err) return res.status(500).json({
+					message: 'Unable to verify password.'
 				});
 
 				jwt.sign({ id: user._id, r:  Math.floor(Math.random() * 10000000) }, APP_SECRET, (err: any, token: any) => {
-					if (err) throw err;
+					if (err) return res.status(500).json({
+						message: "Unable to generate auth token."
+					});
 
-					const t = new Token({
+					new Token({
 						token: token,
 						user: {
 							_id: user._id,
@@ -88,12 +94,11 @@ const UserRoutes 	= {
 							lastName: user.lastName,
 							email: user.email
 						}
-					});
-
-					t.save((err: any, doc: any) => {
-						if (err) throw err;
-
-						res.setHeader('token', token);
+					}).save((err: any, doc: any) => {
+						if (err) return res.status(500).json({
+							message: "Unable to save token."
+						})
+						
 						return res.json({
 							error: false,
 							token: token,
@@ -105,26 +110,252 @@ const UserRoutes 	= {
 								createdAt: user.createdAt
 							}
 						});
-					});
-				});
-			});
-		});
+					})
+				})
+			})
+		})
 	},
 
+	forgotPassword: (req: any, res:any) => {
+		const { error, value } = ForgotPassword.validate(req.body);
+		if (error) return res.status(400).json({
+			message: error.details[0].message
+		})
 
-	validateAction: (req: any, res: any) => {
-		res.json({
-			error: false,
-			message: "Valid"
+		const { email } = value;
+		User.findOne({ "email": email }, (err: any, user: any) => {
+			if (err) return res.status(500).json({
+				message: "Unable to fetch user record."
+			})
+
+			if (!user) return res.status(404).json({
+				message: "There are no record in our system matching that email address."
+			})
+
+			crypto.randomBytes(16, (err: any, buffer: any)=> {
+				if (err) return res.status(500).json({
+					message: "Unable to generate password reset token."
+				})
+
+				new PasswordReset({
+					user: user,
+					token: buffer.toString("hex")
+				}).save((err: any, record: any) => {
+					if (err) return res.status(500).json({
+						message: "Unable to create token record."
+					})
+
+					return res.json({
+						_id: record._id,
+						token: record.token,
+						user: user,
+						createdAt: record.createdAt
+					})
+				})
+			})
+		}).select("_id firstName lastName email");
+	},
+
+	resetPassword: (req: any, res: any) => {
+		const { error, value } = ResetPassword.validate(req.body);
+		if (error) return res.status(400).json({
+			message: error.details[0].message
 		});
-	}
 
+		PasswordReset.findOneAndUpdate({
+			token: value.token,
+			usedAt: null
+		}, {
+			usedAt: Date.now()
+		}, { useFindAndModify: false, new: false }, (err: any, record: any) => {
+			if (err) return res.status(500).json({
+				message: "Unable to fetch token record."
+			})
+
+			if (!record) return res.status(404).json({
+				message: "Invalid token provided."
+			})
+
+			bcrypt.hash(value.password, 10, (err: Error, newPassword: string) => {
+				if (err) return res.status(500).json({
+					message: "Unable to hash password."
+				})
+
+				User.findByIdAndUpdate(record.user._id, {
+					password: newPassword,
+					passwordChangedAt: Date.now(),
+					updatedAt: Date.now()
+				}, { useFindAndModify: false, new: true }, (err: any, user: any) => {
+					if (err) return res.status(500).json({
+						message: "Unable to update password."
+					});
+
+					if (!user) return res.status(404).json({
+						message: "User not found."
+					})
+
+					
+					return res.json({
+						message : "Password successfully updated."
+					})
+				}).select("_id firstName lastName email createdAt updatedAt")
+			});
+		})
+	},
+
+	getAccount: (req: any, res: any) => {
+		const { _id: userId } = req.user;
+		User.findById(userId, (err: any, user: any) => {
+			if (err) return res.status(500).json({
+				message: "Unable to fetch user account."
+			});
+
+			if (!user) return res.status(404).json({
+				message: "User not found."
+			})
+
+			return res.json(user)
+		}).select("_id firstName lastName email phone title company createdAt updatedAt")
+	},
+
+	updateAccount: (req: any, res: any) => {
+		const { error, value: userInfo } = UpdateProfileForm.validate(req.body);
+		if (error) return res.status(400).json({
+			message: error.details[0].message
+		});
+
+		if (!userInfo || Object.keys(userInfo).length === 0) return res.status(400).json({
+			message: "No data provided."
+		});
+
+		User.findByIdAndUpdate(req.user._id, {
+			updatedAt: Date.now(),
+			... userInfo 
+		}, { useFindAndModify: false, new: true}, (err: any, user: any) => {
+			if (err) return res.status(500).json({
+				messgage: "Unable to fetch user record."
+			});
+
+			if (!user) return res.status(404).json({
+				message: "User profile not found."
+			});
+
+			return res.json(user);
+		}).select("_id firstName lastName title company email phone createdAt updatedAt")
+	},
+
+	changeEmail: (req: any, res: any) => {
+		const { error, value } = ChangeEmailForm.validate(req.body);
+		if (error) return res.status(400).json({
+			message: error.details[0].message
+		});
+
+		User.findOne({
+			email: value.email
+		}, (err: any, account: any) => {
+			if (err) return res.status(500).json({
+				message: "Unable to communicate with database."
+			});
+
+			if (!account){
+				// Update user profile with this new email.
+				User.findByIdAndUpdate(req.user._id, {
+					email: value.email,
+					updatedAt: Date.now()
+				}, { useFindAndModify: false, new: true }, (err: any, updatedAccount: any) => {
+					if (err) return res.status(500).json({
+						message: "Unable to find and update user email."
+					});
+
+					if (!updatedAccount) return res.status(410).json({
+						message: "Unable to find user account."
+					});
+
+					return res.json(updatedAccount);
+				}).select("_id firstName lastName email phone title company createdAt updatedAt")
+
+
+			} else {
+				if (account._id.equals(req.user._id) === true){
+
+					return res.status(400).json({
+						message: `Your account email address is already set to '${value.email}'`
+					});
+
+				} else {
+					return res.status(409).json({
+						message: "The provided email address is already being used by another account."
+					});
+				}
+			}
+		})
+	},
+
+	changePassword: (req: any, res: any) => {
+		const { error, value } = ChangePasswordForm.validate(req.body);
+		if (error) return res.status(400).json({
+			message: error.details[0].message
+		})
+
+		if (value.currentPassword === value.newPassword) return res.status(400).json({
+			message: "Current password and new password cannot be the same."
+		})
+
+		User.findById(req.user._id, (err: any, account: any) => {
+			if (err) return res.status(500).json({
+				message: "Unable to get user account."
+			})
+
+			if (!account) return res.status(404).json({
+				message: "User account not found."
+			})
+
+			bcrypt.compare(value.currentPassword, account.password, (err: any, same: boolean) => {
+				if (err) return res.status(500).json({
+					message: "Unable to verify password."
+				})
+
+				if (same === false) return res.status(400).json({
+					message: "Your current password does not match the one we have on record."
+				})
+	
+				bcrypt.hash(value.newPassword, 10, (err: Error, hashed: string) => {
+					if (err) return res.status(500).json({
+						message: "Unable to hash password."
+					})
+
+					User.findByIdAndUpdate(req.user._id, {
+						password: hashed,
+						passwordChangedAt: Date.now(),
+						updatedAt: Date.now()
+					}, { useFindAndModify: false, new: true }, (err: any, updatedUser: any) => {
+						if (err) return res.status(500).json({
+							message: "Unable to update user password."
+						})
+
+						if (!updatedUser) return res.status(404).json({
+							message: "User account not found."
+						})
+
+						return res.json({
+							message: "Password successfully updated."
+						})
+					})
+				})
+			})
+		})
+	}
 }
 
-router.all("/validate", ValidateToken, UserRoutes.validateAction);
+
 router.post("/register", UserRoutes.registerAction);
 router.post('/login', UserRoutes.loginAction);
+router.post('/forgot-password', UserRoutes.forgotPassword);
+router.post('/reset-password', UserRoutes.resetPassword);
+
+router.get("/account", ValidateToken, UserRoutes.getAccount);
+router.patch("/account", ValidateToken, UserRoutes.updateAccount);
+router.put("/account/email", ValidateToken, UserRoutes.changeEmail);
+router.put("/account/password", ValidateToken, UserRoutes.changePassword);
 
 module.exports = router;
-
-

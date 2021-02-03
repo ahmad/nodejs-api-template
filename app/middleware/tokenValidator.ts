@@ -15,11 +15,18 @@ export const ValidateToken = async (req: any, res: any, next: any) => {
 		message: "An auth token is required."
 	});
 
-	const tokenRecord = await Token.findOne({ token: token });
-	if (!tokenRecord) return res.status(401).json({
-		error: true,
-		message: 'Invalid auth token provided.'
-	});
+	Token.findOne({ token: token }, (err: any, record: any) => {
+		if (err) return res.status(500).json({
+			message: "Unable to fetch token record."
+		});
 
-	return next();
+		if (!record) return res.status(401).json({
+			"message": "Invalid auth token provided."
+		});
+
+		req.user 	= record.user;
+		req.token 	= record.token;
+
+		return next();
+	});
 }

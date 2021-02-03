@@ -1,5 +1,4 @@
 import { Token } from "../models/tokenModel";
-import jwt from "jsonwebtoken";
 
 const { APP_SECRET } 	= process.env;
 

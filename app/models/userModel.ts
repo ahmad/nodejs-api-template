@@ -1,7 +1,6 @@
-const  mongoose = require("mongoose");
-const  Schema	 = mongoose.Schema;
+import mongoose from "mongoose";
 
-const userModel = mongoose.model("User", new Schema({
+export const UserSchema = new mongoose.Schema({
 
 	firstName: { type: String, required: true },
 	lastName: { type: String, required: true },
@@ -14,9 +13,10 @@ const userModel = mongoose.model("User", new Schema({
 
 	password: { type: String},
 
-	createAt: { type: Date, default: Date.now },
-	updateAt: { type: Date, default: Date.now }
+	createdAt: { type: Date, default: Date.now },
+	updatedAt: { type: Date, default: Date.now }
 	
-}));
+});
 
-module.exports = userModel;
+
+export const User =  mongoose.model("User", UserSchema);

@@ -1,7 +1,18 @@
-const Joi = require("@hapi/joi");
+import Joi from "joi"
 
+export const LoginForm = Joi.object({
+	email: Joi.string()
+		.trim()
+		.email()
+		.required(),
 
-module.exports = Joi.object({
+	password: Joi.string()
+		.min(6)
+		.max(20)
+		.required()
+});
+
+export const RegisterForm = Joi.object({
 	firstName: Joi.string()
 		.trim()
 		.max(255)
